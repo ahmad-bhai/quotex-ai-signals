@@ -1,1 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Quotex Signals</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#10141f; --panel:#181e2d; --line:#273049; --text:#e9edf7; --muted:#8c97b3;
+  --buy:#2fd4a7; --sell:#ff6b7a; --accent:#6c8cff;
+  color-scheme:dark;
+}
+*{box-sizing:border-box;margin:0}
+html,body{background:var(--bg);color:var(--text);font-family:Manrope,system-ui,sans-serif}
+body{min-height:100vh;padding:max(16px,env(safe-area-inset-top)) 16px max(24px,env(safe-area-inset-bottom));display:flex;justify-content:center}
+.app{width:100%;max-width:460px;display:flex;flex-direction:column;gap:14px}
+header{display:flex;justify-content:space-between;align-items:center;padding:6px 2px}
+h1{font-size:20px;font-weight:800;letter-spacing:-.2px}
+.live{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.dot.on{background:var(--buy);box-shadow:0 0 0 4px rgba(47,212,167,.18)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px}
+label{display:block;font-size:13px;color:var(--muted);margin-bottom:8px}
+.search,select{width:100%;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:12px;font:inherit;font-size:15px}
+.search{margin-bottom:8px}
+select:focus,.search:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:999px;padding:9px 14px;font:inherit;font-size:14px;font-weight:600;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#0b1020}
+.row{display:flex;gap:10px;align-items:center}
+.go{flex:1;background:var(--accent);color:#0b1020;border:0;border-radius:12px;padding:15px;font:inherit;font-size:16px;font-weight:800;cursor:pointer}
+.go:disabled{opacity:.6;cursor:wait}
+.auto{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);white-space:nowrap}
+.result{text-align:center;padding:22px 14px}
+.result .pair{font-size:14px;color:var(--muted)}
+.result .sig{font-size:56px;font-weight:800;letter-spacing:1px;margin:6px 0}
+.result.buy .sig{color:var(--buy)} .result.sell .sig{color:var(--sell)}
+.bar{height:8px;background:var(--bg);border-radius:99px;overflow:hidden;margin:14px auto 6px;max-width:300px}
+.bar i{display:block;height:100%;background:currentColor;width:0;transition:width .5s}
+.result.buy .bar{color:var(--buy)} .result.sell .bar{color:var(--sell)}
+.meta{font-size:13px;color:var(--muted);line-height:1.6}
+.empty{color:var(--muted);font-size:14px}
+.err{color:var(--sell);font-size:14px}
+.hist{display:flex;flex-direction:column;gap:8px;max-height:240px;overflow-y:auto}
+.hist div{display:flex;justify-content:space-between;font-size:13px;padding:8px 10px;background:var(--bg);border-radius:8px}
+.b{color:var(--buy);font-weight:800}.s{color:var(--sell);font-weight:800}
+.warn{font-size:12px;color:var(--muted);text-align:center;line-height:1.5;padding:0 6px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<main class="app">
+  <header>
+    <h1>Quotex Signals</h1>
+    <span class="live"><span class="dot" id="dot"></span><span id="status">Ready</span></span>
+  </header>
 
+  <section class="panel">
+    <label for="pairSearch">Pair</label>
+    <input class="search" id="pairSearch" type="search" placeholder="Search pair (e.g. PKR)" autocomplete="off">
+    <select id="pair" size="1"></select>
+  </section>
+
+  <section class="panel">
+    <label>Timeframe</label>
+    <div class="chips" id="tfs"></div>
+  </section>
+
+  <div class="row">
+    <button class="go" id="go">Get signal</button>
+    <label class="auto" style="margin:0"><input type="checkbox" id="auto"> Auto-refresh <span id="cd"></span></label>
+  </div>
+
+  <section class="panel result" id="result"><p class="empty">Select a pair and time, then click on Get Signal button.</p></section>
+
+  <section class="panel">
+    <label>Recent signals</label>
+    <div class="hist" id="hist"><span class="empty">No any signal yet!</span></div>
+  </section>
+
+  <p class="warn">This Bot is created to help traders learn and grow in Quotex trading.</p>
+</main>
+
+<script>
+const PAIRS = [
+  ["EUR/USD (OTC)","eurusd_otc"],["GBP/USD (OTC)","gbpusd_otc"],["USD/JPY (OTC)","usdjpy_otc"],
+  ["AUD/USD (OTC)","audusd_otc"],["USD/CAD (OTC)","usdcad_otc"],["USD/CHF (OTC)","usdchf_otc"],
+  ["NZD/USD (OTC)","nzdusd_otc"],["EUR/GBP (OTC)","eurgbp_otc"],["EUR/JPY (OTC)","eurjpy_otc"],
+  ["GBP/JPY (OTC)","gbpjpy_otc"],["AUD/CAD (OTC)","audcad_otc"],["EUR/AUD (OTC)","euraud_otc"],
+  ["USD/BRL (OTC)","usdbrl_otc"],["USD/PKR (OTC)","usdpkr_otc"],["USD/INR (OTC)","usdinr_otc"],
+  ["USD/BDT (OTC)","usdbdt_otc"],["USD/TRY (OTC)","usdtry_otc"],["USD/ZAR (OTC)","usdzar_otc"],
+  ["USD/MXN (OTC)","usdmxn_otc"],["USD/IDR (OTC)","usdidr_otc"],["USD/EGP (OTC)","usdegp_otc"],
+  ["USD/NGN (OTC)","usdngn_otc"],["USD/COP (OTC)","usdcop_otc"],["USD/ARS (OTC)","usdars_otc"]
+];
+const TFS = ["5S","10S","15S","30S","1M","2M","3M","5M","15M"];
+
+const $ = id => document.getElementById(id);
+let tf = "1M", busy = false, timer = null, left = 0;
+
+function fillPairs(q=""){
+  const sel = $("pair"), cur = sel.value;
+  sel.innerHTML = "";
+  PAIRS.filter(p => p[0].toLowerCase().includes(q.toLowerCase()))
+       .forEach(([n,v]) => sel.add(new Option(n, v)));
+  if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
+}
+function fillTfs(){
+  const box = $("tfs");
+  TFS.forEach(t => {
+    const b = document.createElement("button");
+    b.className = "chip"; b.textContent = t; b.type = "button";
+    b.setAttribute("aria-pressed", t === tf);
+    b.onclick = () => { tf = t; [...box.children].forEach(c => c.setAttribute("aria-pressed", c.textContent === t)); };
+    box.appendChild(b);
+  });
+}
+
+function showResult(d){
+  const buy = String(d.signal).toUpperCase() === "BUY";
+  const acc = parseInt(d.accuracy) || 0;
+  const r = $("result");
+  r.className = "panel result " + (buy ? "buy" : "sell");
+  r.innerHTML = "";
+  const mk = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; e.textContent = txt; return e; };
+  r.append(mk("div","pair", `${d.pair} · ${d.timeframe}`), mk("div","sig", String(d.signal).toUpperCase()));
+  const bar = mk("div","bar",""); const i = document.createElement("i"); bar.appendChild(i); r.appendChild(bar);
+  requestAnimationFrame(() => i.style.width = acc + "%");
+  r.append(mk("div","meta", `Accuracy ${d.accuracy}`), mk("div","meta", d.reason || ""),
+           mk("div","meta", new Date(d.timestamp).toLocaleTimeString()));
+}
+function showError(msg){
+  const r = $("result"); r.className = "panel result"; r.innerHTML = "";
+  const p = document.createElement("p"); p.className = "err"; p.textContent = msg; r.appendChild(p);
+}
+function addHistory(d){
+  const h = $("hist");
+  if (h.querySelector(".empty")) h.innerHTML = "";
+  const row = document.createElement("div");
+  const a = document.createElement("span"); a.textContent = `${d.pair} · ${d.timeframe}`;
+  const b = document.createElement("span"); const buy = String(d.signal).toUpperCase() === "BUY";
+  b.className = buy ? "b" : "s"; b.textContent = `${String(d.signal).toUpperCase()} ${d.accuracy}`;
+  row.append(a, b); h.prepend(row);
+  while (h.children.length > 20) h.lastChild.remove();
+}
+
+async function getSignal(){
+  if (busy) return;
+  const pair = $("pair").value;
+  if (!pair) return showError("Pehle pair select karo.");
+  busy = true; $("go").disabled = true; $("go").textContent = "Loading...";
+  $("dot").classList.remove("on"); $("status").textContent = "Fetching";
+  try{
+    const r = await fetch(`/api?pair=${encodeURIComponent(pair)}&tf=${encodeURIComponent(tf)}`);
+    const j = await r.json();
+    if (j.status !== "success" || !j.data) throw new Error(j.message || "Signal nahi mila");
+    showResult(j.data); addHistory(j.data);
+    $("dot").classList.add("on"); $("status").textContent = "Live";
+  }catch(e){
+    showError(e.message || "Network error"); $("status").textContent = "Error";
+  }finally{
+    busy = false; $("go").disabled = false; $("go").textContent = "Get signal";
+  }
+}
+
+function tfSeconds(t){ const n = parseInt(t); return t.endsWith("S") ? n : n * 60; }
+function tick(){
+  if (!$("auto").checked){ clearInterval(timer); $("cd").textContent = ""; return; }
+  left--; $("cd").textContent = `(${left}s)`;
+  if (left <= 0){ left = Math.max(tfSeconds(tf), 10); getSignal(); }
+}
+$("auto").onchange = () => {
+  clearInterval(timer);
+  if ($("auto").checked){ left = Math.max(tfSeconds(tf), 10); getSignal(); timer = setInterval(tick, 1000); }
+  else $("cd").textContent = "";
+};
+$("pairSearch").oninput = e => fillPairs(e.target.value);
+$("go").onclick = getSignal;
+fillPairs(); fillTfs();
+</script>
+</body>
+</html>
