@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#000000">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Quotex AI Signals</title>
+<title>Signals</title>
 <script>
 /* Theme sirf page load pe device se liya jata hai. Baad me phone ka theme badle to bot nahi badlega, refresh pe badlega. */
 (function(){var d=matchMedia('(prefers-color-scheme: dark)').matches,r=document.documentElement;
@@ -66,7 +66,9 @@ button.row:active{background:var(--fill)}
 .hero:not([data-state=active]) .ar{opacity:0}
 .hero[data-dir=sell] .ar{transform:rotate(180deg)}
 #lbl{font-size:44px;font-weight:800;letter-spacing:.5px;color:var(--c);transition:color .4s}
-[data-state=idle] #lbl,[data-state=loading] #lbl,[data-state=expired] #lbl{font-size:28px;color:var(--sub)}
+[data-state=idle] #lbl,[data-state=loading] #lbl,[data-state=expired] #lbl,[data-state=waiting] #lbl{font-size:28px;color:var(--sub)}
+.hero[data-state=waiting]{--c:var(--blue)}
+.cta[hidden]{display:none}
 #cnt{font-size:22px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--sub)}
 .hero[data-urgent] #cnt{color:var(--orange);animation:tickp 1s infinite}
 @keyframes tickp{50%{transform:scale(1.12)}}
@@ -83,7 +85,7 @@ button.row:active{background:var(--fill)}
 .bars i:nth-child(1){height:5px}.bars i:nth-child(2){height:8px}.bars i:nth-child(3){height:11px}.bars i:nth-child(4){height:14px}.bars i:nth-child(5){height:18px}
 .bars i.on{background:var(--blue)}
 .cta{width:100%;padding:17px;border-radius:16px;background:var(--blue);color:#fff;font-size:17px;font-weight:600;transition:transform .2s var(--spring),opacity .2s}
-.cta:active{transform:scale(.97)}.cta:disabled{opacity:.55}
+.cta:active{transform:scale(.97)}.cta[hidden]{display:none}
 .sec{display:flex;justify-content:space-between;align-items:center;padding:0 8px;font-size:13px;color:var(--sub);text-transform:none}
 .sec button{color:var(--blue);font-size:15px}
 .hr{display:flex;align-items:center;gap:12px;padding:12px 16px}
@@ -141,7 +143,7 @@ button.row:active{background:var(--fill)}
         <svg viewBox="0 0 8 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 1l6 6-6 6"/></svg></span>
     </button>
     <div class="row col"><span class="lb">Timeframe</span><div class="seg" id="seg"></div></div>
-    <label class="row"><span class="lb">Auto signals<small>After expiration, a new signal comes automatically.</small></span>
+    <label class="row"><span class="lb">Auto signals<small>Next signal arrives after a random 5–60 s wait</small></span>
       <span class="sw"><input type="checkbox" id="auto"><i></i></span></label>
   </section>
 
@@ -166,9 +168,9 @@ button.row:active{background:var(--fill)}
   <button class="cta" id="go" type="button">Get signal</button>
 
   <div class="sec"><span>Recent signals</span><button id="clr" type="button" hidden>Clear</button></div>
-  <section class="grp" id="hist"><p class="empty">Abhi koi signal nahi.</p></section>
+  <section class="grp" id="hist"><p class="empty">No signals yet.</p></section>
 
-  <p class="warn">This Bot is created to help traders learn and grow in Quotex trading.</p>
+  <p class="warn">This bot is created to help traders learn and grow in Quotex trading.<br>Trading involves risk. Signals are not financial advice and never guarantee profit.</p>
 </main>
 
 <div class="toast" id="toast" role="status"></div>
@@ -203,7 +205,7 @@ const ARW='<svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg>';
 
 /* ---- saved state: refresh ya browser close ke baad bhi signal real time chalta rahe ---- */
 const KEY="qx_state_v2";
-let S={pair:"EURUSD",tf:"1M",auto:false,sig:null,hist:[],recent:[]};
+let S={pair:"EURUSD",tf:"1M",auto:false,sig:null,hist:[],recent:[],nextAt:null,waitStart:null};
 try{Object.assign(S,JSON.parse(localStorage.getItem(KEY)||"{}"))}catch{}
 if(!ALL.includes(S.pair))S.pair="EURUSD";
 if(!TFS.includes(S.tf))S.tf="1M";
@@ -213,7 +215,9 @@ if(S.sig&&!(S.sig.end>S.sig.start&&S.sig.d&&S.sig.d.signal))S.sig=null;
 const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch{}};
 
 const card=$("card"),prg=$("prg"),lbl=$("lbl"),cnt=$("cnt"),go=$("go");
-let st="idle",busy=false,lastTry=0,toastT;
+let st="idle",busy=false,toastT;
+const WAIT_MIN=5000,WAIT_MAX=60000;
+function schedule(){const w=Math.round((WAIT_MIN+Math.random()*(WAIT_MAX-WAIT_MIN))/1000)*1000;S.waitStart=Date.now();S.nextAt=S.waitStart+w;save()}
 
 function toast(m){const t=$("toast");t.textContent=m;t.classList.add("show");clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove("show"),3500)}
 
@@ -235,37 +239,46 @@ function paintSig(){
  $("dLvl").textContent=`Level ${lv} · ${LV[lv]}`;
  [...$("bars").children].forEach((b,i)=>b.classList.toggle("on",i<lv));
 }
+/* New-signal button is removed from the page while a signal runs, while loading, and for as long as Auto is on */
+function syncBtn(){go.hidden=S.auto||st==="active"||st==="loading"}
 function setState(n){
  st=n;card.dataset.state=n;const s=S.sig;
  card.dataset.dir=n==="active"?dirOf(s.d.signal):"none";
  if(n!=="active")card.removeAttribute("data-urgent");
- lbl.textContent=n==="active"?s.d.signal:({idle:"Ready",loading:"Analysing",expired:"Expired"})[n];
+ lbl.textContent=n==="active"?s.d.signal:({idle:"Ready",loading:"Analysing",expired:"Expired",waiting:"Next signal"})[n];
  if(n==="idle"||n==="loading"){cnt.textContent=n==="idle"?"00:00":"···";prg.style.strokeDashoffset=n==="loading"?CIRC*.72:CIRC}
  if(n==="expired"){cnt.textContent="00:00";prg.style.strokeDashoffset=CIRC}
- go.disabled=n==="loading";go.textContent=n==="loading"?"Analysing…":S.sig?"New signal":"Get signal";
- const on=n==="active";$("pill").classList.toggle("on",on);$("pillT").textContent=on?"Live":n==="loading"?"Fetching":"Waiting";
+ go.textContent=S.sig?"New signal":"Get signal";syncBtn();
+ const on=n==="active";$("pill").classList.toggle("on",on);$("pillT").textContent=on?"Live":n==="loading"?"Fetching":n==="waiting"?"Auto":"Idle";
 }
 function tick(){
  if(busy)return;
- const s=S.sig;
- if(!s){if(st!=="idle")setState("idle");return}
- const now=Date.now(),left=s.end-now;
- if(left>0){
+ const s=S.sig,now=Date.now();
+ if(s&&s.end>now){
   if(st!=="active")setState("active");
+  const left=s.end-now;
   prg.style.strokeDashoffset=CIRC*(1-left/(s.end-s.start));
   cnt.textContent=fmt(left);
   const u=left<=5000&&s.end-s.start>10000;
   if(u!==card.hasAttribute("data-urgent"))u?card.setAttribute("data-urgent",""):card.removeAttribute("data-urgent");
- }else{
-  if(st!=="expired")setState("expired");
-  if(S.auto&&now-lastTry>4000)fetchSignal();
+  return;
  }
+ if(S.auto){
+  if(!S.nextAt)schedule();                 /* random 5-60 s pause before every auto signal */
+  if(now>=S.nextAt){fetchSignal();return}
+  if(st!=="waiting")setState("waiting");
+  const left=S.nextAt-now;
+  prg.style.strokeDashoffset=CIRC*(1-left/(S.nextAt-S.waitStart));
+  cnt.textContent=fmt(left);
+  return;
+ }
+ const n=s?"expired":"idle";if(st!==n)setState(n);
 }
 
 /* ---- history ---- */
 function paintHist(){
  const h=$("hist");$("clr").hidden=!S.hist.length;
- if(!S.hist.length){h.innerHTML='<p class="empty">No any signal yet!</p>';return}
+ if(!S.hist.length){h.innerHTML='<p class="empty">No signals yet.</p>';return}
  h.innerHTML="";
  S.hist.forEach(x=>{
   const r=document.createElement("div");r.className="hr";
@@ -281,22 +294,22 @@ $("clr").onclick=()=>{S.hist=[];save();paintHist()};
 
 /* ---- fetch ---- */
 async function fetchSignal(){
- if(busy)return;busy=true;lastTry=Date.now();setState("loading");
+ if(busy)return;busy=true;S.nextAt=null;S.waitStart=null;setState("loading");
  const pair=S.pair,tf=S.tf;
  try{
   const r=await fetch(`/api?pair=${pair.toLowerCase()}_otc&tf=${tf}`,{cache:"no-store"});
   const j=await r.json();
-  if(j.status!=="success"||!j.data||!j.data.signal)throw new Error(j.message||"Signal nahi mila");
+  if(j.status!=="success"||!j.data||!j.data.signal)throw new Error(j.message||"Could not get a signal. Please try again.");
   const d=j.data,sg=String(d.signal).toUpperCase(),now=Date.now();
   S.sig={pair,tf,start:now,end:now+tfSec(tf)*1000,d:{signal:sg,accuracy:String(d.accuracy||"0%"),reason:String(d.reason||"")}};
   S.hist.unshift({pair,tf,signal:sg,acc:S.sig.d.accuracy,ts:now});S.hist=S.hist.slice(0,20);
   save();paintSig();paintHist();
   card.classList.remove("pop");void card.offsetWidth;card.classList.add("pop");
- }catch(e){toast(e.message||"Network error")}
+ }catch(e){toast(e.message||"Network error. Please try again.")}
  finally{busy=false;tick();if(st==="loading")setState(S.sig?"expired":"idle")}
 }
 go.onclick=fetchSignal;
-$("auto").onchange=e=>{S.auto=e.target.checked;save();if(S.auto&&(!S.sig||S.sig.end<=Date.now()))fetchSignal()};
+$("auto").onchange=e=>{S.auto=e.target.checked;S.nextAt=null;S.waitStart=null;save();syncBtn();tick()};
 
 /* ---- pair sheet ---- */
 const ov=$("ov"),sheet=$("sheet"),lst=$("lst"),q=$("q");
@@ -310,7 +323,7 @@ function paintList(){
    p.innerHTML=`<span class="flags">${flags(id)}</span><span class="pn"><b>${lab(id)}</b><small>OTC</small></span><svg class="ck" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg>`;b.appendChild(p)});
   lst.append(h,b);
  });
- if(!any){lst.innerHTML='<p class="empty">Koi pair nahi mila.</p>'}
+ if(!any){lst.innerHTML='<p class="empty">No pairs found.</p>'}
 }
 function openSheet(){q.value="";paintList();ov.hidden=false;void ov.offsetWidth;ov.classList.add("open")}
 function closeSheet(){ov.classList.remove("open");sheet.style.transform="";setTimeout(()=>{if(!ov.classList.contains("open"))ov.hidden=true},400)}
@@ -330,7 +343,7 @@ lst.onclick=e=>{const p=e.target.closest(".pr");if(!p)return;
 
 /* ---- start ---- */
 paintSel();paintHist();paintSig();
-setState(S.sig?(S.sig.end>Date.now()?"active":"expired"):"idle");
+tick();
 (function loop(){tick();requestAnimationFrame(loop)})();
 setInterval(tick,1000);
 document.addEventListener("visibilitychange",tick);
