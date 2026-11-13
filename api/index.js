@@ -36,7 +36,7 @@ module.exports = async (req, res) => {
     const text = await r.text();
     let json;
     try { json = JSON.parse(text); }
-    catch { return res.status(502).json({ status: "error", message: "Upstream ne invalid response diya" }); }
+    catch { return res.status(502).json({ status: "error", message: "Signal service returned an invalid response" }); }
 
     // Key ya koi private cheez client ko kabhi nahi bhejte
     return res.status(r.ok ? 200 : r.status).json(json);
@@ -44,7 +44,7 @@ module.exports = async (req, res) => {
     const timeout = e.name === "AbortError";
     return res.status(timeout ? 504 : 502).json({
       status: "error",
-      message: timeout ? "Signal API timeout" : "Signal API se connect nahi hua",
+      message: timeout ? "Signal service timed out" : "Could not reach the signal service",
     });
   } finally {
     clearTimeout(timer);
