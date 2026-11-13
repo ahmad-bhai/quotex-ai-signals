@@ -3,7 +3,7 @@
 // SIGNAL_KEY set karo (recommended). Warna neeche wali fallback key use hogi.
 
 const BASE_URL = "https://magic-scripts-live.vercel.app/s";
-const API_KEY = process.env.SIGNAL_KEY || "KEY_241A00989277";
+const API_KEY = process.env.SIGNAL_KEY || "KEY_473387473092";
 
 const PAIR_RE = /^[a-z]{6}_otc$/;                 // e.g. eurusd_otc, usdbrl_otc
 const TF_ALLOWED = ["5S", "10S", "15S", "30S", "1M", "2M", "3M", "5M", "10M", "15M"];
